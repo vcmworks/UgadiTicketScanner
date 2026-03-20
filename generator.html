@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ugadi Ticket Generator | TAB</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        :root { --p-green: #27ae60; --d-green: #1e8449; --saffron: #f1c40f; --cream: #FFFDD0; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--cream); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 6px solid var(--p-green); }
+        .search-box { position: relative; margin-top: 20px; }
+        input[type="text"] { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        #suggestions { position: absolute; width: 100%; background: white; border: 1px solid #ddd; z-index: 100; display: none; }
+        .s-item { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
+        .s-item:hover { background: #f9f9f9; }
+        
+        /* PDF Layout - Fixed Table for Single Page Fit */
+        #pdf-area { background: white; width: 700px; padding: 20px; margin: 20px auto; color: #000; }
+        .t-table { width: 100%; border: 3px solid var(--p-green); border-collapse: collapse; background: #fff; }
+        .t-main { padding: 20px; border-right: 2px dashed var(--p-green); width: 70%; }
+        .t-stub { padding: 10px; background: #f9fff9; text-align: center; width: 30%; vertical-align: middle; }
+        .g-name { font-size: 28px; font-weight: 900; margin: 10px 0; border-left: 6px solid var(--saffron); padding-left: 10px; }
+        .flyer-box { text-align: center; margin-top: 25px; }
+        .flyer-box img { width: 60%; border-radius: 8px; }
+        .btn-dl { background: var(--p-green); color: white; padding: 12px 25px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" style="text-decoration:none; color: var(--d-green);">← Back to Hub</a>
+        <div class="card" style="margin-top:10px;">
+            <h2>🎟️ Ticket Generator</h2>
+            <input type="file" id="csvFile" accept=".csv">
+            <div class="search-box">
+                <input type="text" id="nameSearch" placeholder="Search Guest Name...">
+                <div id="suggestions"></div>
+            </div>
+        </div>
+
+        <div id="preview" style="display:none; margin-top: 20px;">
+            <div style="text-align: right;"><button class="btn-dl" onclick="genPDF()">Download PDF</button></div>
+            <div id="pdf-area">
+                <table class="t-table">
+                    <tr>
+                        <td class="t-main">
+                            <div style="color:var(--d-green); font-weight:800; font-size:20px;">UGADI SAMBARALU 2026</div>
+                            <div class="g-name" id="out-name">---</div>
+                            <div id="out-id" style="background:var(--d-green); color:var(--saffron); padding:4px 8px; display:inline-block; font-family:monospace;">ID-0000</div>
+                            <div style="margin-top:15px; font-size:13px; background:#fdfae6; padding:10px; border:1px solid var(--saffron);">
+                                📍 Korbhauser Weg 1, 28279 Bremen<br>📅 21.03.2026 | 🕒 15:00 - 21:00
+                            </div>
+                        </td>
+                        <td class="t-stub">
+                            <div id="qrcode"></div>
+                            <div id="out-counts" style="font-size:11px; margin-top:10px; font-weight:bold;">---</div>
+                        </td>
+                    </tr>
+                </table>
+                <div class="flyer-box"><img src="Flyer.jpg" alt="Event Flyer"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let db = [];
+        const qr = new QRCode(document.getElementById("qrcode"), { width: 140, height: 140 });
+
+        document.getElementById('csvFile').onchange = (e) => {
+            const r = new FileReader();
+            r.onload = (ev) => {
+                db = ev.target.result.split('\n').map(l => l.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/^"|"$/g, '').trim())).filter(l => l.length > 1);
+                alert("Data Loaded!");
+            };
+            r.readAsText(e.target.files[0]);
+        };
+
+        document.getElementById('nameSearch').oninput = (e) => {
+            const val = e.target.value.toLowerCase();
+            const sug = document.getElementById('suggestions');
+            sug.innerHTML = '';
+            if(val.length < 2) { sug.style.display = 'none'; return; }
+            const matches = db.filter(r => r[1] && r[1].toLowerCase().includes(val));
+            if(matches.length > 0) {
+                sug.style.display = 'block';
+                matches.slice(0, 5).forEach(m => {
+                    const d = document.createElement('div');
+                    d.className = 's-item'; d.innerText = m[1];
+                    d.onclick = () => {
+                        document.getElementById('preview').style.display = 'block';
+                        document.getElementById('out-name').innerText = m[1].toUpperCase();
+                        document.getElementById('out-id').innerText = m[10];
+                        document.getElementById('out-counts').innerText = `A:${m[4]} S:${m[5]} K:${parseInt(m[6])+parseInt(m[7])}`;
+                        qr.makeCode(`VALID|${m[10]}`);
+                        sug.style.display = 'none';
+                    };
+                    sug.appendChild(d);
+                });
+            }
+        };
+
+        function genPDF() {
+            const el = document.getElementById('pdf-area');
+            const name = document.getElementById('out-name').innerText;
+            html2pdf().set({ margin: 10, filename: `Ticket_${name}.pdf`, html2canvas: { scale: 2 }, jsPDF: { format: 'a4', orientation: 'portrait' }}).from(el).save();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Entry Scanner | TAB Bremen</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+    <style>
+        :root { 
+            --primary-green: #27ae60; 
+            --deep-green: #1e8449; 
+            --saffron-yellow: #f1c40f; 
+            --cream-bg: #FFFDD0; 
+        }
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: var(--cream-bg); 
+            margin: 0; 
+            padding: 20px; 
+            text-align: center; 
+        }
+
+        .card { 
+            background: white; 
+            max-width: 500px; 
+            margin: auto; 
+            padding: 25px; 
+            border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
+            border-top: 10px solid var(--primary-green); 
+        }
+
+        .logo-header { margin-bottom: 20px; }
+        .logo-header img { height: 60px; }
+
+        h2 { color: var(--deep-green); margin: 10px 0; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* QR Scanner Frame */
+        #reader { 
+            width: 100%; 
+            border-radius: 15px; 
+            overflow: hidden; 
+            border: 3px solid var(--primary-green); 
+            background: #000;
+        }
+
+        /* Result Boxes */
+        .res-box { 
+            margin-top: 20px; 
+            padding: 20px; 
+            border-radius: 12px; 
+            display: none; 
+            text-align: left; 
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+        .valid { background: #e8f5e9; border: 2px solid #27ae60; color: #1b5e20; }
+        .invalid { background: #ffebee; border: 2px solid #d32f2f; color: #b71c1c; }
+        .already { background: #fffde7; border: 2px solid #fbc02d; color: #f57f17; }
+
+        /* Stats Grid */
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr 1fr; 
+            gap: 10px; 
+            margin: 15px 0; 
+        }
+        .stat-item { 
+            background: rgba(255,255,255,0.7); 
+            padding: 10px; 
+            border-radius: 8px; 
+            text-align: center; 
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.05);
+        }
+        .stat-label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #666; }
+        .stat-val { font-size: 18px; font-weight: 900; color: var(--deep-green); }
+
+        /* Buttons */
+        .btn { 
+            width: 100%; 
+            padding: 15px; 
+            border: none; 
+            border-radius: 10px; 
+            font-size: 1.1rem; 
+            font-weight: bold; 
+            cursor: pointer; 
+            transition: 0.3s; 
+            margin-top: 10px;
+        }
+        .btn-confirm { background: var(--deep-green); color: var(--saffron-yellow); }
+        .btn-next { background: #eee; color: #333; }
+        .btn:hover { opacity: 0.9; transform: scale(0.98); }
+
+        #loading-overlay { display: none; color: var(--deep-green); font-weight: bold; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo-header">
+        <img src="tablogo.jpg" alt="TAB Logo">
+        <h2>Entry Portal</h2>
+    </div>
+
+    <div id="loading-overlay">📡 Syncing with Google Sheets...</div>
+    
+    <div id="reader"></div>
+
+    <div id="result" class="res-box">
+        </div>
+</div>
+
+<script>
+    // 1. UPDATE THIS URL WITH YOUR DEPLOYED SCRIPT URL
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz1wCoUthoMfTg5pFJg1H_3zwsCjS8MNaLeG4Inzrn32WshT6Tsap6Dh6gKKbTfp9Y/exec";
+
+    let html5QrScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 250 });
+    html5QrScanner.render(onScan);
+
+    async function onScan(decodedText) {
+        // Extract KeyID: Supports raw ID or VALID|ID|NAME format
+        const keyID = decodedText.includes('|') ? decodedText.split('|')[1] : decodedText;
+        
+        document.getElementById('loading-overlay').style.display = "block";
+        html5QrScanner.pause(); 
+
+        try {
+            const response = await fetch(`${SCRIPT_URL}?action=checkGuest&keyID=${keyID}`);
+            const guest = await response.json();
+
+            if (guest.error) {
+                showUI("invalid", `<h1>NOT FOUND</h1><p>The KeyID <b>${keyID}</b> is not recognized in our database.</p><button class="btn btn-next" onclick="reset()">Scan Next</button>`);
+            } else if (guest.status === "Checked") {
+                showUI("already", `<h1>ALREADY IN</h1><h3 style="margin:0">${guest.name}</h3><p>This guest was already marked as <b>Checked</b>.</p><button class="btn btn-next" onclick="reset()">Scan Next</button>`);
+            } else {
+                let isPaid = guest.payment.trim().toLowerCase() === "paid";
+                
+                showUI("valid", `
+                    <h2 style="margin:0">${guest.name}</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item"><div class="stat-label">Adults</div><div class="stat-val">${guest.adults}</div></div>
+                        <div class="stat-item"><div class="stat-label">Students</div><div class="stat-val">${guest.students}</div></div>
+                        <div class="stat-item"><div class="stat-label">Kids</div><div class="stat-val">${guest.kids}</div></div>
+                    </div>
+                    <p style="margin: 5px 0;">Payment: <b style="color:${isPaid ? '#27ae60' : '#d32f2f'}">${guest.payment.toUpperCase()}</b></p>
+                    ${isPaid ? 
+                        `<button id="ci-btn" class="btn btn-confirm" onclick="confirmCheckIn('${keyID}')">CONFIRM ENTRY</button>` : 
+                        `<p style="color:#d32f2f; font-weight:bold;">⚠️ ACCESS DENIED: PAYMENT PENDING</p><button class="btn btn-next" onclick="reset()">Cancel</button>`
+                    }
+                `);
+            }
+        } catch (err) {
+            showUI("invalid", "<h1>SYNC ERROR</h1><p>Could not connect to Google Sheets. Check your internet connection.</p><button class="btn btn-next" onclick="reset()">Try Again</button>");
+        } finally {
+            document.getElementById('loading-overlay').style.display = "none";
+        }
+    }
+
+    async function confirmCheckIn(id) {
+        const btn = document.getElementById('ci-btn');
+        btn.innerText = "Processing...";
+        btn.disabled = true;
+
+        try {
+            // Sends POST to update Column I to "Checked"
+            await fetch(SCRIPT_URL, { 
+                method: "POST", 
+                mode: "no-cors", 
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `action=checkIn&keyID=${id}` 
+            });
+            
+            showUI("valid", `<h1>✅ SUCCESS</h1><p>Guest checked in successfully.</p><button class="btn btn-next" onclick="reset()">Scan Next</button>`);
+        } catch (e) {
+            alert("Failed to update status. Check connection.");
+            btn.disabled = false;
+            btn.innerText = "CONFIRM ENTRY";
+        }
+    }
+
+    function showUI(type, html) {
+        const res = document.getElementById('result');
+        res.style.display = "block";
+        res.className = "res-box " + type;
+        res.innerHTML = html;
+    }
+
+    function reset() {
+        document.getElementById('result').style.display = "none";
+        html5QrScanner.resume();
+    }
+</script>
+
+</body>
+</html>
